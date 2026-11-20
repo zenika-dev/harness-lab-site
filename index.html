@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness Lab — Zenika</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --magenta:#c41e62; --gradient:linear-gradient(90deg,#c41e62 0%,#e1203f 100%); --ink:#1a202c; --text:#4a5568; --line:#e2e8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; font-family:Nunito,system-ui,sans-serif; color:var(--text);
+    background:radial-gradient(60% 50% at 0% 0%,#fde4ee 0%,transparent 100%),radial-gradient(60% 50% at 100% 10%,#e1e8ff 0%,transparent 100%),#fafbfd; }
+  header { padding:24px clamp(16px,4vw,24px) 0; } header img { display:block; height:44px; }
+  main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px clamp(16px,4vw,24px) 96px; text-align:center; }
+  h1 { margin:0; color:var(--ink); font:800 clamp(2rem,6vw,3rem) Montserrat,sans-serif; letter-spacing:-.01em; }
+  p.sub { margin:12px 0 32px; max-width:560px; font-size:1.1rem; }
+  form { width:min(380px,100%); padding:28px; border-radius:16px; background:#fff; box-shadow:0 14px 30px rgb(146 146 146/.14); text-align:left; }
+  label { display:block; margin-bottom:8px; color:var(--ink); font:700 .85rem Montserrat,sans-serif; }
+  input { width:100%; padding:11px 18px; border:1.5px solid var(--line); border-radius:999px; font:inherit; color:var(--ink); background:#fff; }
+  input:focus { outline:none; border-color:var(--ink); }
+  button { width:100%; margin-top:16px; padding:11px 18px; border:0; border-radius:999px; background:#000; color:#fff; font:700 1rem Nunito,sans-serif; cursor:pointer; }
+  button:hover:not(:disabled) { background:var(--magenta); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .err { margin:12px 0 0; min-height:1.3em; color:#c53030; font-size:.92rem; }
+</style>
+</head>
+<body>
+<header><img src="zenika-logo.svg" alt="Zenika"></header>
+<main>
+  <h1>Harness Lab</h1>
+  <p class="sub">Comparatif de harnais d'agents de code : grille de critères et résultats d'évaluation.</p>
+  <form id="f" autocomplete="off">
+    <label for="pw">Mot de passe</label>
+    <input id="pw" type="password" autocomplete="current-password" autofocus required>
+    <button id="go" type="submit">Entrer</button>
+    <p class="err" id="err" role="alert"></p>
+  </form>
+</main>
+<script>
+// The data is encrypted in data.enc.json (PBKDF2-SHA256 -> AES-256-GCM, see scripts/build-site.mjs).
+// A wrong password makes the decryption fail: there is nothing to compare it with.
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const form = document.getElementById('f'), err = document.getElementById('err'), go = document.getElementById('go');
+
+async function decrypt(password) {
+  const enc = await (await fetch('data.enc.json', { cache: 'no-store' })).json();
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.data));
+  return new TextDecoder().decode(plain);
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.textContent = '';
+  go.disabled = true;
+  try {
+    const bundle = await decrypt(document.getElementById('pw').value);
+    sessionStorage.setItem('hl-data', bundle);   // kept for this tab only
+    location.href = 'web/';
+  } catch (ex) {
+    err.textContent = ex.name === 'OperationError' ? 'Mot de passe incorrect.' : 'Impossible de charger les données.';
+    go.disabled = false;
+    document.getElementById('pw').select();
+  }
+});
+</script>
+</body>
+</html>
